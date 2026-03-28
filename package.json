@@ -1,0 +1,24 @@
+{
+  "name": "studysync",
+  "version": "1.0.0",
+  "description": "WhatsApp-powered academic dashboard — local demo mode",
+  "main": "backend/server.js",
+  "scripts": {
+    "start": "node backend/server.js",
+    "dev": "nodemon --ignore tokens/ backend/server.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk":                 "^0.24.0",
+    "@wppconnect-team/wppconnect":       "^1.31.0",
+    "better-sqlite3":                    "^9.6.0",
+    "cors":                              "^2.8.5",
+    "dotenv":                            "^16.4.5",
+    "express":                           "^4.19.2",
+    "qrcode":                            "^1.5.3",
+    "socket.io":                         "^4.7.5",
+    "uuid":                              "^10.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.4"
+  }
+}
