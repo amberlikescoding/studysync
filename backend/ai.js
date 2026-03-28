@@ -12,7 +12,7 @@
 const OpenAI = require('openai');
 require('dotenv').config();
 
-const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const client = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SYSTEM PROMPT
@@ -66,7 +66,8 @@ async function extractAcademicData(messageTexts) {
 
   let rawResponse;
   try {
-    const response = await client.chat.completions.create({
+    if (!client) throw new Error('OPENAI_API_KEY not set — AI extraction unavailable');
+const response = await client.chat.completions.create({
       model:      'gpt-4o-mini',
       max_tokens: 2048,
       messages: [
