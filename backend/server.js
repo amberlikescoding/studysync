@@ -343,9 +343,11 @@ app.post('/api/demo/simulate', async (req, res) => {
 
 // GET /api/health
 app.get('/api/health', (req, res) => {
+  const key = process.env.OPENAI_API_KEY || '';
   res.json({
     status:    'ok',
     whatsapp:  wa.getQRCode()?.status || 'unknown',
+    aiEnabled: !!(key && key.startsWith('sk-') && key.length > 20),
     timestamp: new Date().toISOString(),
   });
 });

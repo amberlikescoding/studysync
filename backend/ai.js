@@ -12,7 +12,15 @@
 const OpenAI = require('openai');
 require('dotenv').config();
 
-const client = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
+const OPENAI_KEY = process.env.OPENAI_API_KEY || '';
+const AI_ENABLED = !!(OPENAI_KEY && OPENAI_KEY.startsWith('sk-') && OPENAI_KEY.length > 20);
+
+if (!AI_ENABLED) {
+  console.warn('[ai] ⚠️  No valid OPENAI_API_KEY — Simulate message will not work.');
+  console.warn('[ai]    Demo mode works fine without it.');
+}
+
+const client = AI_ENABLED ? new OpenAI({ apiKey: OPENAI_KEY }) : null;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SYSTEM PROMPT
@@ -57,6 +65,9 @@ If there are no academic items, return an empty array: []`;
 
 async function extractAcademicData(messageTexts) {
   if (!messageTexts || messageTexts.length === 0) return [];
+  if (!AI_ENABLED) {
+    throw new Error('No valid OPENAI_API_KEY set. Add it to .env to use Simulate.');
+  }
 
   const userMessage = messageTexts
     .map((text, i) => `[${i + 1}] ${text}`)
@@ -66,8 +77,7 @@ async function extractAcademicData(messageTexts) {
 
   let rawResponse;
   try {
-    if (!client) throw new Error('OPENAI_API_KEY not set — AI extraction unavailable');
-const response = await client.chat.completions.create({
+    const response = await client.chat.completions.create({
       model:      'gpt-4o-mini',
       max_tokens: 2048,
       messages: [

@@ -171,6 +171,7 @@
   #toast { position: fixed; bottom: 28px; right: 28px; z-index: 9999; background: var(--ink); color: #fff; padding: 12px 20px; border-radius: var(--radius); font-size: 14px; font-weight: 500; display: none; gap: 8px; align-items: center; box-shadow: var(--shadow-lg); max-width: 320px; }
 
   /* ANIMATIONS */
+  .page-section { animation: fadeSlideUp .3s ease both; }
   @keyframes fadeSlideUp { from { opacity:0; transform:translateY(18px); } to { opacity:1; transform:translateY(0); } }
   @keyframes pulse-dot { 0%,100% { transform:scale(1); opacity:1; } 50% { transform:scale(1.4); opacity:.7; } }
   @keyframes spin { to { transform:rotate(360deg); } }
@@ -196,9 +197,19 @@
   <div class="connect-card">
     <div class="connect-logo">Study<span>Sync</span> ✦</div>
     <p class="connect-sub">Your academic co-pilot — link WhatsApp to never miss a deadline again.</p>
-    <div class="qr-box" id="qr-box"></div>
+    <div class="qr-box" id="qr-box">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:10px;padding:20px">
+        <div class="spinner" style="width:28px;height:28px;border-width:3px"></div>
+        <div style="font-size:12px;color:#888">Starting backend...</div>
+      </div>
+    </div>
     <div class="qr-status-text" id="qr-status-text">
-      <span class="spinner"></span> &nbsp;Loading QR code...
+      <span class="spinner"></span> &nbsp;Connecting to backend...
+    </div>
+    <div id="backend-error" style="display:none;background:#fdeae6;border:1.5px solid rgba(244,99,74,0.3);border-radius:10px;padding:12px 14px;font-size:13px;color:#c0392b;margin-bottom:16px;text-align:left">
+      ⚠️ <strong>Backend not running.</strong><br>
+      Run <code style="background:rgba(0,0,0,0.08);padding:2px 6px;border-radius:4px">npm run dev</code> in the project folder, then 
+      <span style="color:var(--coral);cursor:pointer;font-weight:600;text-decoration:underline" onclick="retryQR()">click here to retry</span>.
     </div>
     <div class="qr-steps">
       <div class="qr-step"><div class="step-num">1</div><div>Open <strong>WhatsApp</strong> on your phone</div></div>
@@ -209,7 +220,8 @@
       <span>🔒</span>
       <span><strong>Your privacy is protected.</strong> You'll choose exactly which groups we can read. Personal chats are never accessed.</span>
     </div>
-    <button class="connect-btn" onclick="skipToDemo()">Skip QR — Use demo mode →</button>
+    <button class="connect-btn" onclick="skipToDemo()" style="margin-bottom:10px">⚡ Skip QR — Use demo mode</button>
+    <div style="text-align:center;font-size:12px;color:var(--ink3)">Demo mode works without WhatsApp or any setup</div>
   </div>
 </div>
 
@@ -232,10 +244,10 @@
   <aside class="sidebar">
     <div class="logo"><div class="logo-dot">✦</div> StudySync</div>
     <div class="nav-label">Dashboard</div>
-    <div class="nav-item active"><span class="icon">⊞</span> Overview</div>
-    <div class="nav-item"><span class="icon">📅</span> Calendar</div>
-    <div class="nav-item"><span class="icon">✔</span> Assignments</div>
-    <div class="nav-item"><span class="icon">🔔</span> Reminders</div>
+    <div class="nav-item active" id="nav-overview" onclick="showPage('overview')"><span class="icon">⊞</span> Overview</div>
+    <div class="nav-item" id="nav-calendar" onclick="showPage('calendar')"><span class="icon">📅</span> Calendar</div>
+    <div class="nav-item" id="nav-assignments" onclick="showPage('assignments')"><span class="icon">✔</span> Assignments</div>
+    <div class="nav-item" id="nav-reminders" onclick="showPage('reminders')"><span class="icon">🔔</span> Reminders</div>
     <div class="nav-label">Settings</div>
     <div class="nav-item" onclick="showGroupScreen()"><span class="icon">👥</span> Manage Groups</div>
     <div class="nav-item" onclick="disconnectWA()" style="color:rgba(248,113,113,0.8)"><span class="icon">⏻</span> Disconnect WA</div>
@@ -251,62 +263,125 @@
       </div>
       <div class="topbar-right">
         <button class="btn btn-outline" onclick="refreshDashboard()">↻ Refresh</button>
-        <button class="btn btn-primary" onclick="showSimulateDialog()">+ Simulate message</button>
+        <button class="btn btn-primary" id="simulate-btn" onclick="showSimulateDialog()">+ Simulate message</button>
       </div>
     </div>
-    <div class="groups-row anim-2" id="groups-row"></div>
-    <div class="stats-row anim-3">
-      <div class="stat-card c1"><span class="stat-icon">📝</span><div class="stat-num" id="stat-assignments">—</div><div class="stat-label">Assignments due</div></div>
-      <div class="stat-card c2"><span class="stat-icon">✅</span><div class="stat-num" id="stat-done">—</div><div class="stat-label">Completed this week</div></div>
-      <div class="stat-card c3"><span class="stat-icon">📅</span><div class="stat-num" id="stat-classes">—</div><div class="stat-label">Classes / exams</div></div>
-      <div class="stat-card c4"><span class="stat-icon">🔔</span><div class="stat-num" id="stat-reminders">—</div><div class="stat-label">Active reminders</div></div>
-    </div>
-    <div class="grid-2 anim-4">
-      <div class="card">
+
+    <!-- PAGE: OVERVIEW -->
+    <div id="page-overview" class="page-section">
+      <div class="groups-row anim-2" id="groups-row"></div>
+      <div class="stats-row anim-3">
+        <div class="stat-card c1"><span class="stat-icon">📝</span><div class="stat-num" id="stat-assignments">—</div><div class="stat-label">Assignments due</div></div>
+        <div class="stat-card c2"><span class="stat-icon">✅</span><div class="stat-num" id="stat-done">—</div><div class="stat-label">Completed this week</div></div>
+        <div class="stat-card c3"><span class="stat-icon">📅</span><div class="stat-num" id="stat-classes">—</div><div class="stat-label">Classes / exams</div></div>
+        <div class="stat-card c4"><span class="stat-icon">🔔</span><div class="stat-num" id="stat-reminders">—</div><div class="stat-label">Active reminders</div></div>
+      </div>
+      <div class="grid-2 anim-4">
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title"><div class="card-title-icon" style="background:var(--violet-lt)">📅</div>Calendar</div>
+            <span class="card-link" onclick="showPage('calendar')">View full →</span>
+          </div>
+          <div class="cal-nav">
+            <div class="cal-month" id="cal-month-label">March 2026</div>
+            <div class="cal-arrows">
+              <button class="cal-arrow-btn" onclick="changeMonth(-1)">‹</button>
+              <button class="cal-arrow-btn" onclick="changeMonth(1)">›</button>
+            </div>
+          </div>
+          <div class="cal-grid" id="calendar-grid"></div>
+          <div style="margin-top:20px;padding-top:16px;border-top:1.5px solid var(--border)">
+            <div class="card-title" style="font-size:14px;margin-bottom:12px">
+              <div class="card-title-icon" style="background:var(--coral-lt);width:24px;height:24px;font-size:12px">📌</div>
+              Upcoming this week
+            </div>
+            <div class="event-list" id="upcoming-events"></div>
+          </div>
+        </div>
+        <div class="card" style="display:flex;flex-direction:column">
+          <div class="card-header">
+            <div class="card-title"><div class="card-title-icon" style="background:var(--coral-lt)">🔔</div>Smart Reminders</div>
+            <span class="card-link" onclick="showPage('reminders')">View all →</span>
+          </div>
+          <div class="reminder-list" id="reminder-list"></div>
+          <div style="margin-top:auto;padding-top:18px;border-top:1.5px solid var(--border)">
+            <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink3)">
+              <span style="background:var(--lemon);color:var(--ink);font-size:10px;font-weight:700;padding:2px 8px;border-radius:100px">AI</span>
+              <span id="last-updated">Loading...</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="card anim-5">
         <div class="card-header">
-          <div class="card-title"><div class="card-title-icon" style="background:var(--violet-lt)">📅</div>Calendar</div>
+          <div class="card-title"><div class="card-title-icon" style="background:var(--lemon-lt)">✔</div>Assignment Tracker</div>
+          <span class="card-link" onclick="showPage('assignments')">View all →</span>
+        </div>
+        <div class="todo-filters">
+          <button class="filter-pill active" onclick="filterTodos('all',this)">All</button>
+          <button class="filter-pill" onclick="filterTodos('high',this)">🔴 Urgent</button>
+          <button class="filter-pill" onclick="filterTodos('medium',this)">🟡 This week</button>
+          <button class="filter-pill" onclick="filterTodos('low',this)">🟢 Later</button>
+          <button class="filter-pill" onclick="filterTodos('done',this)">✅ Done</button>
+        </div>
+        <div class="todo-list" id="todo-list"></div>
+      </div>
+    </div>
+
+    <!-- PAGE: CALENDAR -->
+    <div id="page-calendar" class="page-section" style="display:none">
+      <div class="card" style="max-width:700px">
+        <div class="card-header">
+          <div class="card-title"><div class="card-title-icon" style="background:var(--violet-lt)">📅</div>Full Calendar</div>
         </div>
         <div class="cal-nav">
-          <div class="cal-month" id="cal-month-label">March 2026</div>
+          <div class="cal-month" id="cal-month-label-2">March 2026</div>
           <div class="cal-arrows">
             <button class="cal-arrow-btn" onclick="changeMonth(-1)">‹</button>
             <button class="cal-arrow-btn" onclick="changeMonth(1)">›</button>
           </div>
         </div>
-        <div class="cal-grid" id="calendar-grid"></div>
-        <div style="margin-top:20px;padding-top:16px;border-top:1.5px solid var(--border)">
-          <div class="card-title" style="font-size:14px;margin-bottom:12px">
-            <div class="card-title-icon" style="background:var(--coral-lt);width:24px;height:24px;font-size:12px">📌</div>
-            Upcoming this week
-          </div>
-          <div class="event-list" id="upcoming-events"></div>
-        </div>
+        <div class="cal-grid" id="calendar-grid-2"></div>
       </div>
-      <div class="card" style="display:flex;flex-direction:column">
+      <div class="card" style="margin-top:20px">
         <div class="card-header">
-          <div class="card-title"><div class="card-title-icon" style="background:var(--coral-lt)">🔔</div>Smart Reminders</div>
+          <div class="card-title"><div class="card-title-icon" style="background:var(--coral-lt);width:24px;height:24px;font-size:12px">📌</div>All Upcoming Events</div>
         </div>
-        <div class="reminder-list" id="reminder-list"></div>
-        <div style="margin-top:auto;padding-top:18px;border-top:1.5px solid var(--border)">
-          <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink3)">
-            <span style="background:var(--lemon);color:var(--ink);font-size:10px;font-weight:700;padding:2px 8px;border-radius:100px">AI</span>
-            <span id="last-updated">Loading...</span>
-          </div>
-        </div>
+        <div class="event-list" id="all-events"></div>
       </div>
     </div>
-    <div class="card anim-5">
-      <div class="card-header">
-        <div class="card-title"><div class="card-title-icon" style="background:var(--lemon-lt)">✔</div>Assignment Tracker</div>
+
+    <!-- PAGE: ASSIGNMENTS -->
+    <div id="page-assignments" class="page-section" style="display:none">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title"><div class="card-title-icon" style="background:var(--lemon-lt)">✔</div>All Assignments</div>
+        </div>
+        <div class="todo-filters" id="asgn-filters">
+          <button class="filter-pill active" onclick="filterAssignments('all',this)">All</button>
+          <button class="filter-pill" onclick="filterAssignments('high',this)">🔴 Urgent</button>
+          <button class="filter-pill" onclick="filterAssignments('medium',this)">🟡 This week</button>
+          <button class="filter-pill" onclick="filterAssignments('low',this)">🟢 Later</button>
+          <button class="filter-pill" onclick="filterAssignments('done',this)">✅ Done</button>
+        </div>
+        <div class="todo-list" id="todo-list-full"></div>
       </div>
-      <div class="todo-filters">
-        <button class="filter-pill active" onclick="filterTodos('all',this)">All</button>
-        <button class="filter-pill" onclick="filterTodos('high',this)">🔴 Urgent</button>
-        <button class="filter-pill" onclick="filterTodos('medium',this)">🟡 This week</button>
-        <button class="filter-pill" onclick="filterTodos('low',this)">🟢 Later</button>
-        <button class="filter-pill" onclick="filterTodos('done',this)">✅ Done</button>
+    </div>
+
+    <!-- PAGE: REMINDERS -->
+    <div id="page-reminders" class="page-section" style="display:none">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title"><div class="card-title-icon" style="background:var(--coral-lt)">🔔</div>All Smart Reminders</div>
+        </div>
+        <div class="reminder-list" id="reminder-list-full" style="gap:12px"></div>
+        <div style="margin-top:18px;padding-top:16px;border-top:1.5px solid var(--border)">
+          <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink3)">
+            <span style="background:var(--lemon);color:var(--ink);font-size:10px;font-weight:700;padding:2px 8px;border-radius:100px">AI</span>
+            <span id="last-updated-2">Loading...</span>
+          </div>
+        </div>
       </div>
-      <div class="todo-list" id="todo-list"></div>
     </div>
   </main>
 </div>
@@ -319,6 +394,7 @@ let currentFilter = 'all';
 let calYear = new Date().getFullYear();
 let calMonth = new Date().getMonth();
 let isDemoMode = false;
+let aiEnabled = false; // set after health check
 let socket = null;
 let qrPollTimer = null;
 let lastQrString = null;
@@ -390,14 +466,24 @@ function renderQR(qrString) {
   }
 }
 
+let qrFailCount = 0;
+
 async function pollQR() {
   try {
-    // Check session status first — this catches the CONNECTED state reliably
+    // Check session status first
     const status = await api('/api/session/status');
+    qrFailCount = 0;
+    document.getElementById('backend-error').style.display = 'none';
+
     if (status.status === 'CONNECTED') {
       clearInterval(qrPollTimer);
       document.getElementById('qr-status-text').innerHTML = '✅ Connected! Loading your groups…';
       setTimeout(loadGroupScreen, 800);
+      return;
+    }
+
+    if (status.status === 'SYNCING') {
+      document.getElementById('qr-status-text').innerHTML = '<span class="spinner"></span> &nbsp;WhatsApp is syncing… please wait';
       return;
     }
 
@@ -410,19 +496,39 @@ async function pollQR() {
       img.src = data.qrBase64;
       img.style.width = '170px';
       img.style.height = '170px';
+      img.style.borderRadius = '8px';
       box.appendChild(img);
-      document.getElementById('qr-status-text').innerHTML = 'Scan with WhatsApp on your phone';
+      document.getElementById('qr-status-text').innerHTML = '📱 Scan with WhatsApp on your phone';
     } else {
-      document.getElementById('qr-status-text').innerHTML = '<span class="spinner"></span> &nbsp;Waiting for QR code...';
+      // Backend is up but QR not ready yet — Chromium is still launching
+      document.getElementById('qr-status-text').innerHTML = '<span class="spinner"></span> &nbsp;Launching WhatsApp… this takes ~10 seconds';
     }
   } catch(e) {
-    document.getElementById('qr-status-text').innerHTML = 'Connection error — retrying...';
+    qrFailCount++;
+    if (qrFailCount >= 3) {
+      // Backend is not reachable
+      clearInterval(qrPollTimer);
+      document.getElementById('backend-error').style.display = 'block';
+      document.getElementById('qr-box').innerHTML = '<div style="font-size:32px;padding:20px">🔌</div>';
+      document.getElementById('qr-status-text').innerHTML = '❌ Cannot reach backend';
+    } else {
+      document.getElementById('qr-status-text').innerHTML = '<span class="spinner"></span> &nbsp;Connecting… retrying';
+    }
   }
 }
 
+function retryQR() {
+  qrFailCount = 0;
+  document.getElementById('backend-error').style.display = 'none';
+  document.getElementById('qr-box').innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;gap:10px;padding:20px"><div class="spinner" style="width:28px;height:28px;border-width:3px"></div><div style="font-size:12px;color:#888">Reconnecting...</div></div>';
+  document.getElementById('qr-status-text').innerHTML = '<span class="spinner"></span> &nbsp;Retrying connection...';
+  pollQR();
+  qrPollTimer = setInterval(pollQR, 3000);
+}
+
 function startQRFlow() {
-  pollQR(); // immediately on load
-  qrPollTimer = setInterval(pollQR, 3000); // then every 3 seconds
+  pollQR();
+  qrPollTimer = setInterval(pollQR, 3000);
 }
 
 function skipToDemo() {
@@ -578,7 +684,31 @@ function connectSocket() {
 async function showDashboard() {
   document.getElementById('dashboard').style.display = 'flex';
   connectSocket();
+  await checkAIHealth();
   await refreshDashboard();
+}
+
+async function checkAIHealth() {
+  try {
+    const health = await api('/api/health');
+    aiEnabled = !!(health.aiEnabled);
+    const btn = document.getElementById('simulate-btn');
+    if (btn) {
+      if (!aiEnabled) {
+        btn.title = 'Needs OPENAI_API_KEY in .env to use';
+        btn.style.opacity = '0.45';
+        btn.style.cursor = 'not-allowed';
+        btn.textContent = '+ Simulate message (no key)';
+      } else {
+        btn.title = '';
+        btn.style.opacity = '1';
+        btn.style.cursor = 'pointer';
+        btn.textContent = '+ Simulate message';
+      }
+    }
+  } catch(e) {
+    aiEnabled = false;
+  }
 }
 
 async function refreshDashboard() {
@@ -612,6 +742,7 @@ function renderDashboard() {
   renderReminders([...reminders, ...classes.filter(i => i.status === 'active')].slice(0,5));
   renderTodos([...assignments, ...classes], currentFilter);
   document.getElementById('last-updated').textContent = `Extracted from ${groups.length} group${groups.length !== 1 ? 's' : ''} · Just now`;
+  if (currentPage !== 'overview') renderPageContent(currentPage);
 }
 
 function renderGroupsRow(groups) {
@@ -621,37 +752,19 @@ function renderGroupsRow(groups) {
 }
 
 function renderCalendar(items) {
-  const grid = document.getElementById('calendar-grid');
-  const dows = ['Su','Mo','Tu','We','Th','Fr','Sa'];
-  const today = new Date();
-  const todayDay = (calYear === today.getFullYear() && calMonth === today.getMonth()) ? today.getDate() : -1;
-  const eventDays = {};
-  for (const item of items) {
-    if (!item.due_date) continue;
-    const d = new Date(item.due_date);
-    if (d.getFullYear() === calYear && d.getMonth() === calMonth) {
-      eventDays[d.getDate()] = item.priority === 'high' ? 'coral' : item.type === 'class' ? 'violet' : 'mint';
-    }
-  }
   document.getElementById('cal-month-label').textContent = new Date(calYear, calMonth, 1).toLocaleDateString('en-US', { month:'long', year:'numeric' });
-  const firstDay = new Date(calYear, calMonth, 1).getDay();
-  const totalDays = new Date(calYear, calMonth + 1, 0).getDate();
-  let html = dows.map(d => `<div class="cal-dow">${d}</div>`).join('');
-  for (let i = 0; i < firstDay; i++) html += `<div class="cal-day empty"></div>`;
-  for (let d = 1; d <= totalDays; d++) {
-    const isToday = d === todayDay;
-    const evt = eventDays[d];
-    const dots = evt && !isToday ? `<div class="dots"><div class="dot" style="background:var(--${evt})"></div></div>` : '';
-    html += `<div class="cal-day${isToday ? ' today' : ''}${evt ? ' has-event' : ''}">${d}${dots}</div>`;
-  }
-  grid.innerHTML = html;
+  renderCalendarGrid('calendar-grid', items);
 }
 
 function changeMonth(dir) {
   calMonth += dir;
   if (calMonth > 11) { calMonth = 0; calYear++; }
   if (calMonth < 0) { calMonth = 11; calYear--; }
-  if (dashData) renderCalendar([...dashData.assignments, ...dashData.classes, ...dashData.reminders]);
+  if (dashData) {
+    const allItems = [...dashData.assignments, ...dashData.classes, ...dashData.reminders];
+    renderCalendar(allItems);
+    if (currentPage !== 'overview') renderPageContent(currentPage);
+  }
 }
 
 function renderUpcomingEvents(items) {
@@ -739,6 +852,10 @@ function filterTodos(filter, btn) {
 }
 
 function showSimulateDialog() {
+  if (!aiEnabled) {
+    alert('⚠️ Simulate needs an OpenAI API key.\n\nAdd OPENAI_API_KEY=sk-... to your .env file and restart the server.\n\nFor now, use Demo Mode to see the dashboard with sample data.');
+    return;
+  }
   const msg = prompt('✨ Simulate a WhatsApp message\n\nExamples:\n"Assignment due tomorrow midnight"\n"Exam on Friday 9am Room 101"');
   if (!msg || !msg.trim()) return;
   simulateMessage(msg.trim());
@@ -766,6 +883,159 @@ async function disconnectWA() {
   if (!confirm('Disconnect WhatsApp and clear all data?')) return;
   try { await api('/api/session/disconnect', { method:'POST' }); } catch {}
   location.reload();
+}
+
+// ── PAGE NAVIGATION ──────────────────────────────────────
+let currentPage = 'overview';
+let assignmentFilter = 'all';
+
+function showPage(page) {
+  currentPage = page;
+  // Hide all page sections
+  document.querySelectorAll('.page-section').forEach(s => s.style.display = 'none');
+  // Deactivate all nav items
+  ['overview','calendar','assignments','reminders'].forEach(p => {
+    const el = document.getElementById('nav-' + p);
+    if (el) el.classList.remove('active');
+  });
+  // Show target page with animation
+  const pageEl = document.getElementById('page-' + page);
+  if (pageEl) {
+    pageEl.style.display = 'block';
+    pageEl.style.animation = 'none';
+    pageEl.offsetHeight; // force reflow
+    pageEl.style.animation = 'fadeSlideUp .3s ease both';
+  }
+  // Activate nav item
+  const navEl = document.getElementById('nav-' + page);
+  if (navEl) navEl.classList.add('active');
+  // Render content for this page
+  if (dashData) renderPageContent(page);
+}
+
+function renderPageContent(page) {
+  if (!dashData) return;
+  const { assignments, classes, reminders, groups } = dashData;
+  const allItems = [...assignments, ...classes, ...reminders];
+
+  if (page === 'calendar') {
+    const label2 = document.getElementById('cal-month-label-2');
+    if (label2) label2.textContent = new Date(calYear, calMonth, 1).toLocaleDateString('en-US', { month:'long', year:'numeric' });
+    renderCalendarGrid('calendar-grid-2', allItems);
+    const upcoming = allItems
+      .filter(i => i.due_date && i.status === 'active')
+      .sort((a,b) => new Date(a.due_date) - new Date(b.due_date));
+    const el = document.getElementById('all-events');
+    if (el) {
+      if (!upcoming.length) { el.innerHTML = '<div class="empty-state"><span>📭</span>No upcoming events!</div>'; }
+      else el.innerHTML = upcoming.map(item => buildEventItem(item)).join('');
+    }
+  } else if (page === 'assignments') {
+    renderTodosInto('todo-list-full', [...assignments, ...classes], assignmentFilter);
+  } else if (page === 'reminders') {
+    renderRemindersInto('reminder-list-full', [...reminders, ...classes.filter(i => i.status === 'active')]);
+    const lu2 = document.getElementById('last-updated-2');
+    if (lu2) lu2.textContent = `Extracted from ${groups.length} group${groups.length !== 1 ? 's' : ''} · Just now`;
+  }
+}
+
+function renderCalendarGrid(gridId, items) {
+  const grid = document.getElementById(gridId);
+  if (!grid) return;
+  const dows = ['Su','Mo','Tu','We','Th','Fr','Sa'];
+  const today = new Date();
+  const todayDay = (calYear === today.getFullYear() && calMonth === today.getMonth()) ? today.getDate() : -1;
+  const eventDays = {};
+  for (const item of items) {
+    if (!item.due_date) continue;
+    const d = new Date(item.due_date);
+    if (d.getFullYear() === calYear && d.getMonth() === calMonth) {
+      eventDays[d.getDate()] = item.priority === 'high' ? 'coral' : item.type === 'class' ? 'violet' : 'mint';
+    }
+  }
+  const firstDay = new Date(calYear, calMonth, 1).getDay();
+  const totalDays = new Date(calYear, calMonth + 1, 0).getDate();
+  let html = dows.map(d => `<div class="cal-dow">${d}</div>`).join('');
+  for (let i = 0; i < firstDay; i++) html += `<div class="cal-day empty"></div>`;
+  for (let d = 1; d <= totalDays; d++) {
+    const isToday = d === todayDay;
+    const evt = eventDays[d];
+    const dots = evt && !isToday ? `<div class="dots"><div class="dot" style="background:var(--${evt})"></div></div>` : '';
+    html += `<div class="cal-day${isToday ? ' today' : ''}${evt ? ' has-event' : ''}">${d}${dots}</div>`;
+  }
+  grid.innerHTML = html;
+}
+
+function buildEventItem(item) {
+  const d = item.due_date ? new Date(item.due_date) : null;
+  const day = d ? d.getDate() : '—';
+  const month = d ? d.toLocaleString('en', { month:'short' }).toUpperCase() : '';
+  const badge = item.type === 'class'
+    ? `<span class="event-badge" style="background:var(--violet-lt);color:var(--violet)">Class</span>`
+    : item.priority === 'high'
+      ? `<span class="event-badge" style="background:var(--coral-lt);color:var(--coral)">Urgent</span>`
+      : `<span class="event-badge" style="background:var(--mint-lt);color:var(--mint)">Due</span>`;
+  return `<div class="event-item">
+    <div class="event-date-block"><div class="event-day">${day}</div><div class="event-month">${month}</div></div>
+    <div class="event-info"><div class="event-title">${item.title}</div><div class="event-sub">${item.subject||''} ${item.location ? '· '+item.location : ''}</div></div>
+    ${badge}</div>`;
+}
+
+function filterAssignments(filter, btn) {
+  assignmentFilter = filter;
+  document.querySelectorAll('#asgn-filters .filter-pill').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  if (dashData) renderTodosInto('todo-list-full', [...(dashData.assignments||[]), ...(dashData.classes||[])], filter);
+}
+
+function renderTodosInto(listId, items, filter) {
+  const list = document.getElementById(listId);
+  if (!list) return;
+  let filtered;
+  if (filter === 'done') filtered = items.filter(i => i.status === 'done');
+  else if (filter === 'all') filtered = items.filter(i => i.status !== 'done' && i.status !== 'dismissed');
+  else filtered = items.filter(i => i.priority === filter && i.status !== 'done' && i.status !== 'dismissed');
+  if (!filtered.length) { list.innerHTML = '<div class="empty-state"><span class="big">🎉</span>All caught up!</div>'; return; }
+  list.innerHTML = filtered.map(item => {
+    const done = item.status === 'done';
+    const color = getSubjectColor(item.subject);
+    const over = isOverdue(item.due_date) && !done;
+    const isFull = listId === 'todo-list-full';
+    return `<div class="todo-item ${item.priority}${done ? ' done' : ''}" onclick="${isFull ? 'toggleTodoFull' : 'toggleTodo'}(${item.id})">
+      <div class="todo-checkbox">${done ? '✓' : ''}</div>
+      <div class="todo-content">
+        <div class="todo-title">${item.title}</div>
+        <div class="todo-meta">
+          ${item.subject ? `<span class="todo-tag" style="background:${color}20;color:${color}">${item.subject}</span>` : ''}
+          <span class="todo-due${over ? ' overdue' : ''}">📅 ${formatDate(item.due_date)}</span>
+        </div>
+      </div></div>`;
+  }).join('');
+}
+
+async function toggleTodoFull(id) {
+  const item = [...(dashData?.assignments||[]), ...(dashData?.classes||[])].find(i => i.id === id);
+  if (!item) return;
+  const newStatus = item.status === 'done' ? 'active' : 'done';
+  try {
+    await api(`/api/items/${id}/status`, { method:'PATCH', body: JSON.stringify({ status: newStatus }) });
+    item.status = newStatus;
+    renderTodosInto('todo-list-full', [...dashData.assignments, ...dashData.classes], assignmentFilter);
+    dashData.stats.completedThisWeek += newStatus === 'done' ? 1 : -1;
+    document.getElementById('stat-done').textContent = Math.max(0, dashData.stats.completedThisWeek);
+  } catch { toast('⚠️ Could not update item'); }
+}
+
+function renderRemindersInto(elId, items) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  if (!items.length) { el.innerHTML = '<div class="empty-state"><span class="big">🌟</span>No reminders!</div>'; return; }
+  el.innerHTML = items.map(item => `
+    <div class="reminder-item ${item.priority}">
+      <div class="reminder-icon">${REMINDER_ICONS[item.type] || '📌'}</div>
+      <div><div class="reminder-text">${item.title}</div>
+      <div class="reminder-time">${item.due_date ? '📅 ' + formatDate(item.due_date) : ''} ${item.subject ? '· ' + item.subject : ''}</div></div>
+    </div>`).join('');
 }
 
 // ── INIT ─────────────────────────────────────────────────
