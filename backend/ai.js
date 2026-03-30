@@ -1,30 +1,33 @@
 /**
- * ai.js — OpenAI GPT-4o-mini powered academic data extraction
+ * ai.js — Google Gemini powered academic data extraction
  *
  * HOW IT WORKS:
  *   1. We receive a batch of raw WhatsApp message texts (no names, no phone numbers)
- *   2. We send them to GPT-4o-mini with a detailed system prompt
+ *   2. We send them to Gemini with a detailed system prompt
  *   3. The model returns a JSON array of structured academic items
  *   4. We validate and normalize the response
  *   5. Return the cleaned items to webhook.js for database storage
+ *
+ * WHY GEMINI:
+ *   Free API key — no credit card needed.
+ *   Get yours at: https://aistudio.google.com/apikey
  */
 
-const OpenAI = require('openai');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 require('dotenv').config();
 
-const OPENAI_KEY = process.env.OPENAI_API_KEY || '';
-const AI_ENABLED = !!(OPENAI_KEY && OPENAI_KEY.startsWith('sk-') && OPENAI_KEY.length > 20);
+const GEMINI_KEY = process.env.GEMINI_API_KEY || '';
+const AI_ENABLED = !!(GEMINI_KEY && GEMINI_KEY.length > 10);
 
 if (!AI_ENABLED) {
-  console.warn('[ai] ⚠️  No valid OPENAI_API_KEY — Simulate message will not work.');
+  console.warn('[ai] ⚠️  No GEMINI_API_KEY found — AI extraction disabled.');
+  console.warn('[ai]    Get a free key at https://aistudio.google.com/apikey');
   console.warn('[ai]    Demo mode works fine without it.');
+} else {
+  console.log('[ai] ✅ Gemini API ready.');
 }
 
-const client = AI_ENABLED ? new OpenAI({ apiKey: OPENAI_KEY }) : null;
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SYSTEM PROMPT
-// ─────────────────────────────────────────────────────────────────────────────
+const genAI = AI_ENABLED ? new GoogleGenerativeAI(GEMINI_KEY) : null;
 
 const SYSTEM_PROMPT = `You are an academic assistant that extracts structured information from WhatsApp group messages sent by students and professors.
 
@@ -45,59 +48,51 @@ Each item in the array must follow this schema:
 }
 
 Rules:
-- "assignment": homework, problem sets, reports, projects, submissions
-- "class": lectures, tutorials, labs, exams, presentations — things with a TIME
-- "reminder": anything important that doesn't fit above (announcements, study reminders)
-- Set priority "high" if: exam/test, due within 48 hours, professor directly said urgent
+- "assignment": homework, problem sets, reports, projects, submissions with a FUTURE deadline
+- "class": upcoming lectures, tutorials, labs, exams — things with a FUTURE date and TIME
+- "reminder": important upcoming announcements that don't fit above
+- IGNORE completely: class cancellations, class already started, past events, "class has started", "no class today", attendance messages, casual chat, reactions, memes, "ok", "noted", "thanks"
+- IGNORE any event whose date has already passed — only extract FUTURE deadlines and events
+- Only extract items where there is a clear actionable task or upcoming event for the student
+- Do NOT extract: notifications that something already happened, cancellations, general announcements with no deadline
+- Set subject to null always — do not guess subject names
+- Set priority "high" if: exam/test, due within 48 hours, professor said urgent
 - Set priority "medium" if: due within a week, regular assignment
-- Set priority "low" if: due more than a week away, reading/optional tasks
-- Set confidence < 0.70 if: the date is ambiguous, or you're not sure it's a real task
-- For relative dates ("tomorrow", "next friday"), resolve them relative to today: ${new Date().toISOString().split('T')[0]}
-- Ignore: casual conversation, memes, "ok", "thanks", social messages
-- If a message mentions the same assignment as another, merge them into one item
+- Set priority "low" if: due more than a week away
+- Set confidence < 0.70 if: date is ambiguous or unclear
+- For relative dates ("tomorrow", "next friday", "kal"), resolve relative to today: ${new Date().toISOString().split('T')[0]}
+- Only include dates that are in the FUTURE relative to today
 - Messages may be in English, Hindi, or Hinglish — handle all
 
-If there are no academic items, return an empty array: []`;
-
-// ─────────────────────────────────────────────────────────────────────────────
-// MAIN EXTRACTION FUNCTION
-// ─────────────────────────────────────────────────────────────────────────────
+If there are no valid future academic items, return an empty array: []`;
 
 async function extractAcademicData(messageTexts) {
   if (!messageTexts || messageTexts.length === 0) return [];
+
   if (!AI_ENABLED) {
-    throw new Error('No valid OPENAI_API_KEY set. Add it to .env to use Simulate.');
+    throw new Error('No GEMINI_API_KEY set. Add it to .env to enable AI extraction.');
   }
 
   const userMessage = messageTexts
     .map((text, i) => `[${i + 1}] ${text}`)
     .join('\n');
 
-  console.log(`[ai] Sending ${messageTexts.length} messages to GPT-4o-mini for extraction`);
+  console.log(`[ai] Sending ${messageTexts.length} messages to Gemini for extraction`);
 
   let rawResponse;
   try {
-    const response = await client.chat.completions.create({
-      model:      'gpt-4o-mini',
-      max_tokens: 2048,
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user',   content: `Extract academic items from these WhatsApp messages:\n\n${userMessage}` },
-      ],
-    });
-
-    rawResponse = response.choices[0]?.message?.content || '';
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' });
+    const result = await model.generateContent(
+      `${SYSTEM_PROMPT}\n\nExtract academic items from these WhatsApp messages:\n\n${userMessage}`
+    );
+    rawResponse = result.response.text();
   } catch (err) {
-    console.error('[ai] OpenAI API error:', err.message);
+    console.error('[ai] Gemini API error:', err.message);
     throw err;
   }
 
   return parseResponse(rawResponse);
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// RESPONSE PARSER + VALIDATOR
-// ─────────────────────────────────────────────────────────────────────────────
 
 function parseResponse(raw) {
   if (!raw || raw.trim() === '') return [];
@@ -111,7 +106,7 @@ function parseResponse(raw) {
       .trim();
     parsed = JSON.parse(clean);
   } catch (err) {
-    console.error('[ai] Failed to parse response as JSON:', raw.substring(0, 200));
+    console.error('[ai] Failed to parse Gemini response as JSON:', raw.substring(0, 200));
     return [];
   }
 
@@ -144,13 +139,8 @@ function normalizeItem(item) {
 
 function isValidDate(dateStr) {
   if (!dateStr || typeof dateStr !== 'string') return false;
-  const d = new Date(dateStr);
-  return !isNaN(d.getTime());
+  return !isNaN(new Date(dateStr).getTime());
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// DEMO DATA
-// ─────────────────────────────────────────────────────────────────────────────
 
 function getDemoItems() {
   const now = new Date();
@@ -161,37 +151,21 @@ function getDemoItems() {
   const in12days = new Date(now); in12days.setDate(now.getDate() + 12);
 
   return [
-    {
-      type: 'assignment', title: 'Linear Algebra Problem Set 3',
-      subject: 'MATH201', dueDate: tomorrow.toISOString(),
-      description: 'Questions 1–15 from Chapter 4. Submit on Moodle.',
-      priority: 'high', confidence: 0.97,
-    },
-    {
-      type: 'class', title: 'CS301 Midterm Exam',
-      subject: 'CS301', dueDate: in2days.toISOString(),
-      location: 'Room 204, Block C',
-      description: 'Covers Chapters 1–6. Bring student ID.',
-      priority: 'high', confidence: 0.99,
-    },
-    {
-      type: 'assignment', title: 'Physics Lab Report — Optics',
-      subject: 'PHYSICS', dueDate: in5days.toISOString(),
-      description: 'Submit via Moodle. Include error analysis.',
-      priority: 'medium', confidence: 0.92,
-    },
-    {
-      type: 'reminder', title: 'Read Chapters 7–9 before Thursday lecture',
-      subject: 'ENG LIT', dueDate: in7days.toISOString(),
-      description: 'Modernist Poetry unit. Discussion in class.',
-      priority: 'medium', confidence: 0.85,
-    },
-    {
-      type: 'assignment', title: 'CS301 Group Project Proposal',
-      subject: 'CS301', dueDate: in12days.toISOString(),
-      description: 'Submit proposal to Prof. Mehta. Max 2 pages.',
-      priority: 'low', confidence: 0.90,
-    },
+    { type:'assignment', title:'Linear Algebra Problem Set 3', subject:'MATH201',
+      dueDate:tomorrow.toISOString(), description:'Questions 1–15 from Chapter 4. Submit on Moodle.',
+      priority:'high', confidence:0.97 },
+    { type:'class', title:'CS301 Midterm Exam', subject:'CS301',
+      dueDate:in2days.toISOString(), location:'Room 204, Block C',
+      description:'Covers Chapters 1–6. Bring student ID.', priority:'high', confidence:0.99 },
+    { type:'assignment', title:'Physics Lab Report — Optics', subject:'PHYSICS',
+      dueDate:in5days.toISOString(), description:'Submit via Moodle. Include error analysis.',
+      priority:'medium', confidence:0.92 },
+    { type:'reminder', title:'Read Chapters 7–9 before Thursday lecture', subject:'ENG LIT',
+      dueDate:in7days.toISOString(), description:'Modernist Poetry unit. Discussion in class.',
+      priority:'medium', confidence:0.85 },
+    { type:'assignment', title:'CS301 Group Project Proposal', subject:'CS301',
+      dueDate:in12days.toISOString(), description:'Submit proposal to Prof. Mehta. Max 2 pages.',
+      priority:'low', confidence:0.90 },
   ];
 }
 

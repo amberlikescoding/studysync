@@ -145,8 +145,14 @@ function insertExtractedItems(userId, items, sourceGroup) {
   const stmt = db.prepare(`
     INSERT INTO extracted_items
       (user_id, type, title, subject, due_date, description, location, priority, confidence, status, source_group)
-    VALUES
-      (@userId, @type, @title, @subject, @dueDate, @description, @location, @priority, @confidence, @status, @sourceGroup)
+    SELECT @userId, @type, @title, @subject, @dueDate, @description, @location, @priority, @confidence, @status, @sourceGroup
+    WHERE NOT EXISTS (
+      SELECT 1 FROM extracted_items
+      WHERE user_id = @userId
+        AND title = @title
+        AND (due_date = @dueDate OR (due_date IS NULL AND @dueDate IS NULL))
+        AND status != 'dismissed'
+    )
   `);
 
   const insertMany = db.transaction((items) => {
@@ -160,7 +166,6 @@ function insertExtractedItems(userId, items, sourceGroup) {
         description: item.description || null,
         location:    item.location    || null,
         priority:    item.priority    || 'medium',
-        // If Claude confidence is below 0.70, send to needs_review queue
         confidence:  item.confidence  || 1.0,
         status:      (item.confidence && item.confidence < 0.70) ? 'needs_review' : 'active',
         sourceGroup,

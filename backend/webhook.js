@@ -40,7 +40,7 @@ const { pushToUser } = require('./socket');
 //   context for accurate extraction (e.g. follow-up messages clarifying a date).
 
 const batchQueues    = new Map();
-const BATCH_TIMEOUT  = 20_000;   // ms — wait 20s for more messages before sending
+const BATCH_TIMEOUT  = 5_000;   // ms — wait 5s for more messages before sending
 const BATCH_MAX_SIZE = 15;       // send immediately if queue reaches 15 messages
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -235,16 +235,28 @@ async function scanExistingMessages(wa, authorizedGroups) {
     try {
       console.log(`[webhook] Scanning existing messages in: ${group.groupName}`);
 
-      // Fetch last 50 messages from this group
-      const messages = await wa.wppClient.getMessages(group.groupId, { count: 50 });
+      // Fetch last 100 messages then filter to last 7 days only
+      const messages = await wa.wppClient.getMessages(group.groupId, { count: 100 });
 
       if (!messages || messages.length === 0) {
         console.log(`[webhook] No messages found in ${group.groupName}`);
         continue;
       }
 
+      // Only keep messages from the last 7 days
+      const sevenDaysAgo = Math.floor(Date.now() / 1000) - (7 * 24 * 60 * 60);
+      const recentMessages = messages.filter(m => {
+        const ts = m.timestamp || m.t || 0;
+        return ts >= sevenDaysAgo;
+      });
+
+      if (recentMessages.length === 0) {
+        console.log(`[webhook] No messages in last 7 days for ${group.groupName}`);
+        continue;
+      }
+
       // Extract text from messages, filter to academic ones
-      const texts = messages
+      const texts = recentMessages
         .map(m => (m.body || m.content || '').trim())
         .filter(t => t.length >= 5 && looksAcademic(t));
 
@@ -253,13 +265,20 @@ async function scanExistingMessages(wa, authorizedGroups) {
         continue;
       }
 
-      console.log(`[webhook] Found ${texts.length} academic messages in ${group.groupName}`);
+      console.log(`[webhook] Found ${texts.length} academic messages in ${group.groupName} (last 7 days)`);
 
-      // Send to Claude
+      // Send to AI
       const extracted = await extractAcademicData(texts);
 
       if (extracted && extracted.length > 0) {
-        insertExtractedItems(user.id, extracted, group.groupId);
+        // Add group name to each item for display
+        const itemsWithGroup = extracted.map(item => ({
+          ...item,
+          description: item.description
+            ? `${item.description} · From: ${group.groupName}`
+            : `From: ${group.groupName}`
+        }));
+        insertExtractedItems(user.id, itemsWithGroup, group.groupId);
         totalExtracted += extracted.length;
         console.log(`[webhook] Extracted ${extracted.length} items from ${group.groupName}`);
       }

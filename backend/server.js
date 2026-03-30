@@ -254,14 +254,28 @@ app.get('/api/groups/authorized', (req, res) => {
 // DASHBOARD + ITEM ROUTES
 // ─────────────────────────────────────────────────────────────────────────────
 
-app.get('/api/dashboard', (req, res) => {
+app.get('/api/dashboard', async (req, res) => {
   const user  = getUserFromRequest(req);
   const items = db.getItemsForUser(user.id);
+  const groups = db.getAuthorizedGroups(user.id);
+
+  // Try to get real name from live WPPConnect session
+  let displayName = user.name;
+  try {
+    const sessionStatus = await wa.checkSessionStatus();
+    if (sessionStatus.name && sessionStatus.name !== 'Demo Student') {
+      displayName = sessionStatus.name;
+      // Update DB with real name
+      if (displayName !== user.name) {
+        db.upsertUser({ id: user.id, phone: user.phone, name: displayName, whapiSession: user.whapi_session });
+      }
+    }
+  } catch {}
 
   res.json({
-    user:        { id: user.id, name: user.name },
+    user:        { id: user.id, name: displayName },
     stats:       db.getStatsForUser(user.id),
-    groups:      db.getAuthorizedGroups(user.id),
+    groups,
     assignments: items.filter(i => i.type === 'assignment'),
     classes:     items.filter(i => i.type === 'class'),
     reminders:   items.filter(i => i.type === 'reminder'),

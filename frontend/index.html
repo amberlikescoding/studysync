@@ -574,7 +574,7 @@ async function fetchGroupsWithRetry() {
 
   // ── REAL QR MODE: poll until WhatsApp syncs real groups ───────────────────
   let attempts = 0;
-  const maxAttempts = 20; // try for up to 60 seconds
+  const maxAttempts = 40; // try for up to 120 seconds
 
   async function tryFetch() {
     attempts++;
@@ -644,13 +644,12 @@ async function confirmGroups() {
   document.getElementById('group-screen').style.display = 'none';
 
   if (isDemoMode) {
-    // seed fresh demo data then show dashboard
     await api('/api/demo/seed');
   } else {
-    // real mode — clear old demo data so only real extracted items show
     await api('/api/demo/clear');
   }
 
+  // Remember setup so page refresh doesn't lose session
   showDashboard();
 }
 
@@ -725,7 +724,9 @@ function renderDashboard() {
   const { user, stats, groups, assignments, classes, reminders } = dashData;
   const allItems = [...assignments, ...classes, ...reminders];
 
-  document.getElementById('greeting').textContent = `${greetingText()}, ${user.name || 'Student'} 👋`;
+  // Get real name from dashboard response
+  const displayName = user.name && user.name !== 'Demo Student' ? user.name : 'Student';
+  document.getElementById('greeting').textContent = `${greetingText()}, ${displayName} 👋`;
   const urgent = allItems.filter(i => i.priority === 'high' && i.status === 'active').length;
   document.getElementById('subtitle').textContent = urgent > 0
     ? `${new Date().toDateString()} · ${urgent} urgent item${urgent > 1 ? 's' : ''} need your attention`
@@ -747,8 +748,23 @@ function renderDashboard() {
 
 function renderGroupsRow(groups) {
   const row = document.getElementById('groups-row');
-  if (!groups || !groups.length) { row.innerHTML = '<span style="font-size:13px;color:var(--ink3)">No groups authorized yet</span>'; return; }
-  row.innerHTML = groups.map((g,i) => `<div class="group-badge"><div class="group-avatar" style="background:${GROUP_COLORS[i%GROUP_COLORS.length]}">${g.group_name.charAt(0)}</div>${g.group_name}</div>`).join('');
+  // Always fetch authorized groups directly — most reliable source
+  api('/api/groups/authorized').then(data => {
+    const g = data.groups || [];
+    if (g.length > 0) {
+      row.innerHTML = g.map((grp, i) => `
+        <div class="group-badge">
+          <div class="group-avatar" style="background:${GROUP_COLORS[i % GROUP_COLORS.length]}">${grp.group_name.charAt(0)}</div>
+          ${grp.group_name}
+        </div>`).join('');
+      // Update dashData.groups so getGroupName works correctly
+      if (dashData) dashData.groups = g;
+    } else {
+      row.innerHTML = '<span style="font-size:13px;color:var(--ink3)">No groups authorized yet</span>';
+    }
+  }).catch(() => {
+    row.innerHTML = '<span style="font-size:13px;color:var(--ink3)">No groups authorized yet</span>';
+  });
 }
 
 function renderCalendar(items) {
@@ -802,6 +818,13 @@ function renderReminders(items) {
 const SUBJECT_COLORS = ['#7C6FF7','#3BBFA0','#F4634A','#F4C330','#4AB3F4','#F06292'];
 const subjectColorMap = {};
 let colorIdx = 0;
+function getGroupName(groupId) {
+  if (!groupId) return '';
+  if (!dashData || !dashData.groups || !dashData.groups.length) return '';
+  const g = dashData.groups.find(g => g.group_id === groupId);
+  return g ? g.group_name : '';
+}
+
 function getSubjectColor(subject) {
   if (!subject) return '#8A8070';
   if (!subjectColorMap[subject]) subjectColorMap[subject] = SUBJECT_COLORS[colorIdx++ % SUBJECT_COLORS.length];
@@ -824,7 +847,7 @@ function renderTodos(items, filter) {
       <div class="todo-content">
         <div class="todo-title">${item.title}</div>
         <div class="todo-meta">
-          ${item.subject ? `<span class="todo-tag" style="background:${color}20;color:${color}">${item.subject}</span>` : ''}
+          ${item.source_group && getGroupName(item.source_group) ? `<span class="todo-tag" style="background:#1E1A1415;color:var(--ink3)">${getGroupName(item.source_group)}</span>` : ''}
           <span class="todo-due${over ? ' overdue' : ''}">📅 ${formatDate(item.due_date)}</span>
         </div>
       </div></div>`;
@@ -1006,7 +1029,7 @@ function renderTodosInto(listId, items, filter) {
       <div class="todo-content">
         <div class="todo-title">${item.title}</div>
         <div class="todo-meta">
-          ${item.subject ? `<span class="todo-tag" style="background:${color}20;color:${color}">${item.subject}</span>` : ''}
+
           <span class="todo-due${over ? ' overdue' : ''}">📅 ${formatDate(item.due_date)}</span>
         </div>
       </div></div>`;
@@ -1039,7 +1062,27 @@ function renderRemindersInto(elId, items) {
 }
 
 // ── INIT ─────────────────────────────────────────────────
-window.addEventListener('load', () => {
+window.addEventListener('load', async () => {
+  // Small delay to let backend initialize
+  await new Promise(r => setTimeout(r, 500));
+
+  try {
+    const status = await api('/api/session/status');
+    if (status.status === 'CONNECTED') {
+      const groupData = await api('/api/groups/authorized');
+      if (groupData.groups && groupData.groups.length > 0) {
+        document.getElementById('connect-screen').style.display = 'none';
+        showDashboard();
+        return;
+      } else {
+        document.getElementById('connect-screen').style.display = 'none';
+        loadGroupScreen();
+        return;
+      }
+    }
+  } catch (e) {
+    console.log('Init check failed, starting QR flow');
+  }
   startQRFlow();
 });
 </script>
